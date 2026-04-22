@@ -49,10 +49,10 @@ The app auto-detects the following terminals. Uninstalled ones are greyed out:
 
 ```bash
 # Install this fork
-brew install dingtang2008/tap/go2shell
+brew install dingtang2008/go2shell/go2shell
 
 # Upgrade
-brew upgrade dingtang2008/tap/go2shell
+brew upgrade dingtang2008/go2shell/go2shell
 ```
 
 > Upstream builds are at `solarhell/tap/go2shell` if you prefer the original.
