@@ -9,14 +9,28 @@
 
 ![settings](screenshots/settings.jpg)
 
+> 本仓库是 [solarhell/go2shell](https://github.com/solarhell/go2shell) 的个人 fork，做了一些打磨，详见 [Fork 改动](#-fork-改动)。
+
 ## ✨ 功能特性
 
 - 🚀 **一键启动** - 从 Finder 工具栏快速打开终端
+- 📋 **一键复制路径** - 复制当前目录或选中项的完整路径
+- 💾 **网络盘可用** - SMB/AFP 挂载盘、服务器浏览等 FinderSync 默认"失声"的场景也能正常响应
 - 🎯 **智能终端检测** - 自动检测系统中已安装的终端应用
 - 🎨 **真实应用图标** - 使用终端应用的原生图标
 - ⚡️ 纯 Swift 实现，轻量高效
 - 🔧 简单易用，无需复杂配置
 - 📦 适用于 macOS Sequoia 15.0+
+
+## 🛠 Fork 改动
+
+本 fork 相对于上游的改动：
+
+- **图标重绘**：按 Apple HIG 规范重做，824×824 内容区 + 深色 squircle 底板 + 渐变与描边——Launchpad 里尺寸与其他 app 一致。
+- **两个 Finder 工具栏扩展**：独立的 *Open in Terminal* 按钮 + 新增的 *Copy Path* 按钮，均以 FinderSync 扩展形式打包。
+- **适配网络盘**：FinderSync 的 URL API 在 SMB/AFP 挂载盘、服务器浏览等场景会返回 `nil`，两个扩展在这种情况下会通过 AppleScript 向 Finder 询问当前路径兜底。apple-events 权限仅限定于 `com.apple.finder`。
+- **消除"正在等待"**：菜单回调把实际工作派发到后台队列，Finder 工具栏即点即响应。
+- **主应用与扩展共享偏好**：首选终端设置通过 app group `group.com.solarhell.go2shell` 在主应用和两个扩展之间共享。
 
 ### 支持的终端应用
 
@@ -35,12 +49,14 @@
 ### Homebrew（推荐）
 
 ```bash
-# 安装
-brew install solarhell/tap/go2shell
+# 安装本 fork
+brew install dingtang2008/tap/go2shell
 
 # 升级
-brew upgrade solarhell/tap/go2shell
+brew upgrade dingtang2008/tap/go2shell
 ```
+
+> 如果想用上游版本，可以改用 `solarhell/tap/go2shell`。
 
 ### 从源码构建
 
