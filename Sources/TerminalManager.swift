@@ -36,8 +36,10 @@ class TerminalManager {
         }
     }
 
-    static func openTerminal(atPath path: String) {
-        let terminalName = UserDefaults.standard.string(forKey: "PreferredTerminal") ?? "Terminal"
+    static func openTerminal(atPath path: String, override: String? = nil) {
+        let terminalName = override
+            ?? SharedDefaults.shared.string(forKey: "PreferredTerminal")
+            ?? "Terminal"
         var terminal = Terminal(rawValue: terminalName) ?? .terminal
         if !terminal.isInstalled {
             terminal = .terminal

@@ -11,6 +11,14 @@ RELEASE_DIR = $(BUILD_DIR)/release
 APP_BUNDLE = $(BUILD_DIR)/$(APP_NAME).app
 INSTALL_PATH = /Applications/$(APP_NAME).app
 
+# FinderSync 扩展
+SDK_PATH := $(shell xcrun --show-sdk-path --sdk macosx)
+ARCH := $(shell uname -m)
+TARGET := $(ARCH)-apple-macosx15.0
+EXT_DIR = FinderSyncExtension
+TERM_EXT = $(BUILD_DIR)/go2shellTerminal.appex
+COPY_EXT = $(BUILD_DIR)/go2shellCopy.appex
+
 # 默认目标
 all: build
 
@@ -37,9 +45,15 @@ build:
 	@echo ""
 
 	# 使用 SPM 构建 Release 版本
-	@echo "📦 使用 Swift Package Manager 编译..."
+	@echo "📦 使用 Swift Package Manager 编译主应用..."
 	@swift build -c release
-	@echo "✅ Swift 编译完成"
+	@echo "✅ 主应用编译完成"
+	@echo ""
+
+	# 构建 FinderSync 扩展
+	@echo "🔌 构建 FinderSync 扩展..."
+	@$(MAKE) --no-print-directory build-extensions
+	@echo "✅ 扩展构建完成"
 	@echo ""
 
 	# 创建 App Bundle
@@ -59,17 +73,62 @@ build:
 	@echo ""
 	@echo "下一步: make install"
 
+# 构建两个 FinderSync .appex
+build-extensions: build-terminal-ext build-copy-ext
+
+build-terminal-ext:
+	@echo "  → Building TerminalSync extension"
+	@rm -rf $(TERM_EXT)
+	@mkdir -p $(TERM_EXT)/Contents/MacOS
+	@mkdir -p $(TERM_EXT)/Contents/Resources
+	@swiftc -target $(TARGET) \
+	        -sdk $(SDK_PATH) \
+	        -O -parse-as-library \
+	        -Xlinker -e -Xlinker _NSExtensionMain \
+	        -framework Foundation -framework AppKit -framework FinderSync \
+	        -o $(TERM_EXT)/Contents/MacOS/go2shellTerminal \
+	        $(EXT_DIR)/TerminalSync/FinderSyncController.swift \
+	        $(EXT_DIR)/TerminalSync/TerminalLauncher.swift \
+	        $(EXT_DIR)/TerminalSync/main.swift
+	@cp $(EXT_DIR)/TerminalSync/Info.plist $(TERM_EXT)/Contents/Info.plist
+	@codesign --force --sign - \
+	        --entitlements $(EXT_DIR)/TerminalSync/FinderSync.entitlements \
+	        $(TERM_EXT)
+
+build-copy-ext:
+	@echo "  → Building CopySync extension"
+	@rm -rf $(COPY_EXT)
+	@mkdir -p $(COPY_EXT)/Contents/MacOS
+	@mkdir -p $(COPY_EXT)/Contents/Resources
+	@swiftc -target $(TARGET) \
+	        -sdk $(SDK_PATH) \
+	        -O -parse-as-library \
+	        -Xlinker -e -Xlinker _NSExtensionMain \
+	        -framework Foundation -framework AppKit -framework FinderSync \
+	        -o $(COPY_EXT)/Contents/MacOS/go2shellCopy \
+	        $(EXT_DIR)/CopySync/FinderSyncController.swift \
+	        $(EXT_DIR)/CopySync/main.swift
+	@cp $(EXT_DIR)/CopySync/Info.plist $(COPY_EXT)/Contents/Info.plist
+	@codesign --force --sign - \
+	        --entitlements $(EXT_DIR)/CopySync/FinderSync.entitlements \
+	        $(COPY_EXT)
+
 # 创建 App Bundle 结构
 create-bundle:
 	@rm -rf $(APP_BUNDLE)
 	@mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	@mkdir -p $(APP_BUNDLE)/Contents/Resources
+	@mkdir -p $(APP_BUNDLE)/Contents/PlugIns
 
 	# 复制主应用可执行文件
 	@cp $(RELEASE_DIR)/go2shell $(APP_BUNDLE)/Contents/MacOS/
 
+	# 嵌入 FinderSync 扩展
+	@cp -R $(TERM_EXT) $(APP_BUNDLE)/Contents/PlugIns/
+	@cp -R $(COPY_EXT) $(APP_BUNDLE)/Contents/PlugIns/
+
 	# 复制 SPM resource bundle（本地化资源等）
-	@for bundle in $(BUILD_DIR)/arm64-apple-macosx/release/*.bundle; do \
+	@for bundle in $(BUILD_DIR)/*-apple-macosx/release/*.bundle; do \
 		if [ -d "$$bundle" ]; then \
 			cp -r "$$bundle" $(APP_BUNDLE)/Contents/Resources/; \
 		fi; \
@@ -90,10 +149,17 @@ create-bundle:
 		fi; \
 	done
 
-# 代码签名
+# 代码签名（扩展已在 build 阶段单独签名，此处只签主 app）
 codesign:
-	# 签名主应用
-	@codesign --force --deep --sign - \
+	# 先确保嵌入的扩展签名完好
+	@codesign --force --sign - \
+		--entitlements $(EXT_DIR)/TerminalSync/FinderSync.entitlements \
+		$(APP_BUNDLE)/Contents/PlugIns/go2shellTerminal.appex
+	@codesign --force --sign - \
+		--entitlements $(EXT_DIR)/CopySync/FinderSync.entitlements \
+		$(APP_BUNDLE)/Contents/PlugIns/go2shellCopy.appex
+	# 签名主应用（不 --deep，避免覆盖扩展 entitlements）
+	@codesign --force --sign - \
 		--entitlements Resources/go2shell.entitlements \
 		$(APP_BUNDLE)
 
@@ -114,6 +180,28 @@ install: build
 	fi
 	@cp -r $(APP_BUNDLE) $(INSTALL_PATH)
 	@echo "✅ 应用已安装到 $(INSTALL_PATH)"
+	@echo ""
+	@echo "🔌 重新注册 App 与 FinderSync 扩展..."
+	@# lsregister -f 触发 LaunchServices 重新扫描整个 app，pluginkit 也会 re-index
+	@/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f $(INSTALL_PATH)
+	@sleep 1
+	@pluginkit -a $(INSTALL_PATH)/Contents/PlugIns/go2shellTerminal.appex
+	@pluginkit -a $(INSTALL_PATH)/Contents/PlugIns/go2shellCopy.appex
+	@pluginkit -e use -i com.solarhell.go2shell.TerminalSync
+	@pluginkit -e use -i com.solarhell.go2shell.CopySync
+	@sleep 2
+	@if pluginkit -m -v 2>/dev/null | grep -q "com.solarhell.go2shell.TerminalSync"; then \
+		echo "  ✓ TerminalSync 已注册"; \
+	else \
+		echo "  ✗ TerminalSync 未注册"; exit 1; \
+	fi
+	@if pluginkit -m -v 2>/dev/null | grep -q "com.solarhell.go2shell.CopySync"; then \
+		echo "  ✓ CopySync 已注册"; \
+	else \
+		echo "  ✗ CopySync 未注册"; exit 1; \
+	fi
+	@killall Finder 2>/dev/null || true
+	@echo "✅ Finder 已重启"
 	@echo ""
 
 # 卸载

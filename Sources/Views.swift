@@ -32,7 +32,8 @@ class SettingsAppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - Views
 
 struct MainView: View {
-    @AppStorage("PreferredTerminal") private var preferredTerminal = "Terminal"
+    @AppStorage("PreferredTerminal", store: SharedDefaults.shared)
+    private var preferredTerminal = "Terminal"
 
     var body: some View {
         ScrollView {
