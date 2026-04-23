@@ -50,10 +50,10 @@
 
 ```bash
 # 安装本 fork
-brew install dingtang2008/go2shell/go2shell
+brew install dingtang2008/tap/go2shell
 
 # 升级
-brew upgrade dingtang2008/go2shell/go2shell
+brew upgrade dingtang2008/tap/go2shell
 ```
 
 > 如果想用上游版本，可以改用 `solarhell/tap/go2shell`。
