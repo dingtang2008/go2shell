@@ -90,14 +90,42 @@ class TerminalManager {
         NSAppleScript(source: source)?.executeAndReturnError(&error)
     }
 
-    /// Ghostty
+    /// Ghostty — uses Ghostty 1.x's AppleScript dictionary to add a tab to
+    /// the running instance (so we don't spawn a new process every click).
+    /// Cold start falls back to `open -na --args --working-directory=` so the
+    /// first window lands at the right path. See the FinderSync extension's
+    /// TerminalLauncher.swift for the full reasoning.
     private static func openGhostty(atPath path: String) {
-        let escapedPath = path.specialCharEscaped(2)
-        let source = """
-        do shell script "open -a Ghostty \(escapedPath)"
-        """
+        let isRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.mitchellh.ghostty").isEmpty
+        let source: String
+        if isRunning {
+            source = """
+            tell application id "com.mitchellh.ghostty"
+                activate
+                set cfg to new surface configuration
+                set initial working directory of cfg to \(appleScriptString(path))
+                if (count of windows) > 0 then
+                    new tab in front window with configuration cfg
+                else
+                    new window with configuration cfg
+                end if
+            end tell
+            """
+        } else {
+            let escapedPath = path.specialCharEscaped(2)
+            source = """
+            do shell script "open -na Ghostty.app --args --working-directory=\(escapedPath)"
+            """
+        }
         var error: NSDictionary?
         NSAppleScript(source: source)?.executeAndReturnError(&error)
+    }
+
+    private static func appleScriptString(_ s: String) -> String {
+        let escaped = s
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     /// WezTerm

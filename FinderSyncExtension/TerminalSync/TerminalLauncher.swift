@@ -73,10 +73,37 @@ enum TerminalLauncher {
             do shell script "open " & quoted form of "warp://action/new_tab?path=\(urlEncode(path))"
             """
         case .ghostty:
-            source = """
-            tell application id "\(terminal.bundleID)" to activate
-            do shell script "open " & quoted form of "ghostty://new?cwd=\(urlEncode(path))"
-            """
+            // Ghostty 1.x ships an AppleScript dictionary (`new tab` / `new
+            // window` with a `surface configuration` carrying the initial
+            // working directory). When Ghostty is already running, that's how
+            // we reuse the existing process instead of spawning a new app
+            // instance. When it's NOT running, AppleScript would activate it
+            // and Ghostty would auto-open its default window at the user's
+            // home dir, then a second `new window` for our path — two
+            // windows. So in the cold-start case we use `open -na --args
+            // --working-directory=` instead, which makes Ghostty's first
+            // window land at our path with no extras. Note: `new tab`
+            // requires an explicit `in <window>` even though the sdef marks
+            // it optional.
+            let isRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: terminal.bundleID).isEmpty
+            if isRunning {
+                source = """
+                tell application id "\(terminal.bundleID)"
+                    activate
+                    set cfg to new surface configuration
+                    set initial working directory of cfg to \(appleScriptString(path))
+                    if (count of windows) > 0 then
+                        new tab in front window with configuration cfg
+                    else
+                        new window with configuration cfg
+                    end if
+                end tell
+                """
+            } else {
+                source = """
+                do shell script "open -na Ghostty.app --args --working-directory=" & quoted form of \(appleScriptString(path))
+                """
+            }
         case .wezterm:
             source = """
             tell application id "\(terminal.bundleID)" to activate
@@ -100,5 +127,13 @@ enum TerminalLauncher {
 
     private static func urlEncode(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? s
+    }
+
+    /// AppleScript string literal, with backslash and double-quote escaped.
+    private static func appleScriptString(_ s: String) -> String {
+        let escaped = s
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 }
